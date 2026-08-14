@@ -68,3 +68,108 @@ Middle value of dataset when value is sorted
 Divide the lowest 25% of the data from highest 75%
 
 ### 75th percentile
+
+Divide the lowest 75% of the data from highest 25%
+
+### Outlier
+
+Data point that differs significantly from other samples in dataset. Can be caused by error
+
+### Min & Max
+
+Most extreme data point that not considered as outlier
+
+## Software and Hardware Timers
+
+To benchmark execution time of application, engineer usually use two different timers
+
+### System-wide high resolution timer
+
+Called epoch, can be retrieved by OS system call.
+
+```c++
+#include <cstdint>
+#include <chrono>
+// returns elapsed time in nanoseconds
+uint64_t timeWithChrono() {
+    using namespace std::chrono;
+    auto start = steady_clock::now();
+    // run something
+    auto end = steady_clock::now();
+    uint64_t delta = duration_cast<nanoseconds>(end - start).count();
+    return delta;
+}
+```
+
+### Time Stamp Counter (TSC)
+
+This is hardware timer, suitable for measuring short events from nanosecond up to 1 min.
+
+```c++
+#include <x86intrin.h>
+#include <cstdint>
+// returns the number of elapsed reference clocks
+uint64_t timeWithTSC() {
+    uint64_t start = __rdtsc();
+    // run something
+    return __rdtsc() - start;
+}
+```
+
+Tl;dr, if short measurement, use TSC, if long, use System timer. Using system timer has an overhead.
+
+## Microbenchmark
+
+Small test to quickly see the hypothesis.
+
+When writing benchmark, make sure the compiler didn't remove your code that you want to check. Sometimes compiler optimization makes the code got removed because compiler thinks it's not used.
+
+```c++
+// foo DOES NOT benchmark string creation
+void foo() {
+    for (int i = 0; i < 1000; i++)
+        std::string s("hi");
+}
+```
+
+One popular way to solve this problem is to add some kind of `DoNotOptimize` helper function
+
+```c++
+// foo benchmarks string creation
+void foo() {
+    for (int i = 0; i < 1000; i++) {
+        std::string s("hi");
+        DoNotOptimize(s);
+    }
+}
+```
+
+## Active Benchmarking
+
+In summary, if you only benchmark something on the face level only, it's called passive benchmarking. To make it more extra miles, we can do active benchmarking.
+
+By ensuring proper configuration, ran extensive testing, looked one level deeper, and collecting as many entries as possible to support it's conclusion is some way to do active benchmarking.
+
+## Questions and Exercises
+
+### Is it always safe to take a mean of a series of measurements to determine the running time of a program? What are the pitfalls?
+
+I don't think only using mean as a measurement of running time is good enough. Because what if there's some outlier that disturb the Min & Max? It will ruin the value of the mean. 
+
+I think we should check the outlier + noise first, then we can check the mean and other metrics after that.
+
+### Suppose you’ve identified a performance bug that you’re now trying to fix in your development environment. How would you reduce the noise in the system to have more pronounced benchmarking results?
+
+I think we need to benchmark more than 1 time, we need to do it several times, and every benchmark we need to reason why the benchmark is running faster / slower vs previous one.
+
+Maybe it's running faster because now it's using the cache from previous run.
+
+Maybe it's running slower because it's the first time running the benchmark, making it need to prepare the cache.
+
+### Is it OK to track the overall performance of a program with function-level unit tests?
+
+No, function level unit test is not enough to check overall performance, especially unit test framework usually have some kind of overhead that makes the program runs slower.
+
+### Does your organization have a performance regression system in place? If yes, can it be improved? If not, think about the strategy of installing one. Take into consideration: what is changing and what isn’t (source code, compiler, hardware configuration, etc.), how often a change occurs, what is the measurement variance, what is the running time of the benchmark suite, and how many iterations you can run.
+
+To be honest, I can't answer for this one, sorry.
