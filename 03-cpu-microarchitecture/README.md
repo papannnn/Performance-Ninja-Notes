@@ -164,3 +164,5 @@ It's caused by program flow, for example the `if` `else` `jump`.
 The instruction already go inside the pipelining, but because the flow is changing because of the `if` `else` `jump`, that means we don't do that branch anymore.
 
 Some techniques to handle this including `Dynamic Branch Prediction`,  `Speculative Execution`.
+
+oIPL
