@@ -432,3 +432,389 @@ CSV
 - Columnar databases (bit packing, filtering, joins);
 - Sorting built-in types (VQSort, QuickSelect);
 - Machine Learning and Artificial Intelligence (speeding up PyTorch, TensorFlow).
+
+### Exploiting Thread-Level Parallelism
+
+To improve more performance, we can exploit thread level parallelism, Thread-Level Parallelism divided into 3 categories:
+
+#### Multicore Systems
+
+The idea of Multicore Processor is to make your computer can run multiple process at the same time, for example listening to music while you do browse internet.
+
+But this is not a free performance, each core generates heat, that means if there's 10 cores that running 10 computer process. It will create 10x more heat in your computer. In some situation, multicore processor also reduces clock speed.
+
+It's harder to add more cores because each cores shares resources with another cores, they shares resources using memory bus for example, when a lot of cores using memory bus, memory bus will become a bottleneck.
+
+#### Simultaneous Multithreading
+
+Another approach is to do Simultaneous Multithreading (SMT), people also call this hyperthreading.
+
+SMT basically running multiple software in same core.
+
+The multiple software can be anything, can be another thread in same process, can be another process also.
+
+```
+     Non-SMT                      SMT2
+   issue slots                 issue slots
+  ┌───┬───┬───┬───┐          ┌───┬───┬───┬───┐
+1 │███│   │   │   │        1 │███│▒▒▒│   │   │
+  ├───┼───┼───┼───┤          ├───┼───┼───┼───┤
+2 │███│███│   │   │        2 │███│███│▒▒▒│▒▒▒│
+  ├───┼───┼───┼───┤          ├───┼───┼───┼───┤
+3 │   │   │   │   │        3 │▒▒▒│▒▒▒│▒▒▒│   │
+  ├───┼───┼───┼───┤          ├───┼───┼───┼───┤
+..│███│███│███│   │       .. │███│███│███│   │
+  ├───┼───┼───┼───┤          ├───┼───┼───┼───┤
+  │   │   │   │   │          │▒▒▒│   │   │   │
+  ├───┼───┼───┼───┤          ├───┼───┼───┼───┤
+  │███│   │   │   │          │███│▒▒▒│▒▒▒│   │
+  ├───┼───┼───┼───┤          ├───┼───┼───┼───┤
+  │███│███│███│███│          │███│███│███│███│
+  ├───┼───┼───┼───┤          ├───┼───┼───┼───┤
+  │███│███│   │   │          │███│███│▒▒▒│▒▒▒│
+  └───┴───┴───┴───┘          └───┴───┴───┴───┘
+   cycles ↓                   cycles ↓
+
+  Legend:
+  ███  = thread 1
+  ▒▒▒  = thread 2
+  (blank) = unused slot
+```
+
+The reasoning of SMT because in superscalar system, the CPU core has multiple execution unit (ALU, load / store unit, FPUs, etc). That means, if we're only doing single threaded application, there's high chance some execution unit being idle, wasting some performance there.
+
+Although the two program running in the same core, they are completely separated with each other, having each different context to maintain the correctness of the program running.
+
+SMT give a burden to developer due to unpredictable nature, because of that this topic is not a priority.
+
+#### Hybrid Architectures
+
+In Hybrid Architecture, in one processor usually have more than 1 type of core, for example the big core and small core. Big core can handle heavier task, small core is more energy friendly.
+
+### Memory Hierarchy
+
+CPU memory hierarchy is build with these 2 fundamentals:
+
+- Temporal Locality
+
+If you access this data, most likely in the future you're gonna access this again, so CPU will try to cache this data so you can get the data more faster in the future.
+
+- Spatial Locality
+
+If you access this data, most likely in the future you're gonna access data around this data. So CPU will try to cache data around this data.
+
+#### Cache Hierarchy
+
+Cache is an organized small, fast storage block that lives near execution unit. Because it's lives near execution unit, the retrieval can be fast. Not like RAM that lives far away from execution unit.
+
+The bigger the cache, the slower it can be accessed.
+
+Cache are organized as a block with defined size called cache line, usually it's 64B, but other processor like Apple has 128B for the L2 cache. L1 cache usually have size of 32KB to 128KB. Mid level cache usually has 1MB or above.
+
+#### Placement of Data within the Cache
+
+Address that being used to access data in memory is being used as a key to access the cache.
+
+- Direct Mapped Caches
+
+In direct-mapped caches, a block address can only appear in one location in the cache
+
+Number of Blocks in the Cache = Cache Size / Cache Block Size
+
+Direct mapped location = (block address) mod (Number of Blocks in the Cache )
+
+Direct mapped caches is simple to make and fast access since you just need to mod the block address and check that location, but it has high miss rate because another data with the same mod value can overwrite the previous data in cache.
+
+- Fully Associative Cache
+
+There's another approach, using fully associative cache, basically block address can be placed in any location in cache, but need high hardware complexity and impractical.
+
+
+- Set Associative Mapping
+
+An intermediate approach is to do set-associative mapping. In the cache, blocks are organized as sets, each set contains 2, 4, 6, 8 or 16 blocks.
+
+In a set, the address can be placed anywhere.
+
+Number of Sets in the Cache = Number of Blocks in the Cache / Number of Blocks per Set (associativity)
+
+Set (m-way) associative location = (block address) mod (Number of Sets in the Cache)
+
+#
+
+Let's have an example, let's assume we have L1 cache that having:
+
+- a size of 32KB
+- cache line 64B
+- 64 sets
+- associativity of 8 blocks.
+
+That means, we have:
+
+- 32KB / 64B = 512 Lines
+
+A new cache line can only be inserted in appropriate set in one of the 8 block available.
+
+Let's have another example:
+
+For Apple M1 processor. L1 data cache each core has:
+
+- a size of 128KB
+- cache line 64B
+- 256 sets
+- associativity of 8 blocks
+
+For L2 data cache in Apple:
+
+- a size of 12MB
+- associativity of 12 blocks
+- cache line 128B
+
+With this info, we can get the amount of set
+
+- Set = Cache Size (12MB) / (Associativity (12) * Line Size(128)) = 12,582,912 / 1,536 = 8,192
+
+#### Finding Data in the Cache
+
+```
++--------------------------------------------------------+-------------+
+|                     Block Address                      |   Block     |
+|                                                        |   offset    |
++---------------------------+----------------------------+-------------+
+|            Tag            |            Index           |             |
++---------------------------+----------------------------+-------------+
+```
+
+Here's an example on how the data got fetched in cache.
+
+Assuming:
+
+- Address is `0x123403232`
+- Set 8192
+- Associativity of 12
+- Cache line of 128B
+
+Calculate:
+
+- Address bit = `000100100011010000000011001000110010` 36 bit
+- Because cache line is 128B = log(128) = 7 bit for offset
+- Because set 8192 = log(8192) = 13 bit for index
+- Tag bit = 36 bit - 7 - 13 = 16 bit
+
+Split into fields
+
+```
+| TAG (16 bits)       | INDEX (13 bits)      | OFFSET (7 bits) |
+| 0001001000110100    | 0000001100100        | 0110010         |
+| = 0x1234            | = 100 (decimal)      | = 50 (decimal)  |
+```
+
+Intepret the field:
+
+Index = 100, means it will go to set no 100.
+
+Offset = 50, means once we get the block, we go to offset 50 on that cache line
+
+Because in 1 set, there's 12 block, it will parallel check all 12 block, check is any block has the tag `0x1234`.
+
+If yes, read byte on offset 50
+
+If no, fetch data from memory or L3 cache, put the data into set no 100, put the tag as `0x1234`
+
+#### Managing Misses
+
+If there's cache misses:
+
+- Direct mapped cache
+
+Because direct mapped cache can only go into single location, that means the previous entry will be overwritten with the new data.
+
+- Set Associative Cache
+
+Because cache block can be put anywhere as long in the right set, replacement algorithm is required, usually we use LRU policy, another way is choose randomly.
+
+#### Managing Writes
+
+CPU use two basic mechanism to handle write in cache:
+
+- Write Through Cache
+
+If CPU want to write something on address `0x1234`, it will write to L1 cache, then L2, then L3, then main memory.
+
+- Write Back Cache
+
+If CPU want to write something address `0x1234`, it will write to L1 cache only, but set dirty bit on L1, to tell this need to write into another cache / memory.
+
+When that `0x1234` need to be evicted in L1, look at the dirty bit first, if dirty bit is true, that means CPU need to write to L2 first, set as dirty bit true, then evict L1. And so on if CPU want to evict L2.
+
+#
+
+Cache misses in write operation can be handled with two way:
+
+- Write Allocate Cache
+
+When CPU want to write something but the data is not even in the cache, it will traverse the data to the below hierarchy until go to main memory, then fill the data to all cache. Then update the data in the cache and put dirty bit on L1
+
+```
+CPU writes X
+   │
+   └──→ L1: MISS
+           │
+           └──→ L2: MISS
+                   │
+                   └──→ L3: MISS
+                           │
+                           └──→ Fetch block from Main Memory
+                                     │
+              ┌──────────────────────┼──────────────────────┐
+              ▼                      ▼                      ▼
+        Allocate in L3         Allocate in L2         Allocate in L1
+        (block placed here)   (block placed here)    (block placed here,
+                                                        then CPU's write
+                                                        applied, dirty=1)
+```
+
+What if the data found on L3?
+
+```
+CPU writes X
+   │
+   └──→ L1: MISS
+           │
+           └──→ L2: MISS
+                   │
+                   └──→ L3: HIT!  (data found here, no memory access needed)
+                           │
+              ┌────────────┴────────────┐
+              ▼                         ▼
+        Allocate in L2            Allocate in L1
+        (copy placed here)       (copy placed here,
+                                   write applied, dirty=1)
+```
+
+- No write allocate policy
+
+If data that CPU want to write is not on cache, just write it directly on main memory.
+
+#
+
+Most design usually choose write-back cache with write allocate policy.
+
+Write through caches typically use no write allocate policy
+
+#### Other Cache Optimization Techniques
+
+Average Access Latency = Hit Time + Miss Rate * Miss Penalty
+
+Tldr, cache miss will make pipeline stall, we want to minimize cache miss as much as possible.
+
+Miss rate is dependent to cache architecture (block size, associativity) and software.
+
+#### Hardware and Software Prefetching
+
+One way to avoid cache misses is to prefetch the data and let the data go into the cache first before we start the application.
+
+Most CPU has implicit prefetching, and developer can also do manual software prefetching to complement.
+
+Hardware prefetching look at the behavior on the program and do the prefetching when it see some pattern for cache misses.
+
+But hardware prefetching is very limited, that's why developer also need to do software prefetching.
+
+### Virtual Memory
+
+Virtual memory basically a way to represent a physical memory to a program in computer.
+
+It's also provide a protection so the program didn't access memory that doesn't intended, for example accessing another program memory.
+
+To help manage the physical memory, it divided into pages.
+
+Pages will be saved in page table with the translation of their physical address.
+
+```
+                        Virtual address (64 bit)
+        +----------------------------+----------------------+
+        |   virtual page number      |     page offset      |
+        |         (52 bits)          |      (12 bits)       |
+        +----------------------------+----------------------+
+                     |                          |
+                     |                          |
+                     v                          |
+             +---------------+                  |
+             |               |                  |
+             |  Page table   |                  |
+             |               |                  |
+             +---------------+                  |
+                     |                          |
+                     | Physical address         |
+                     |      (64 bit)            |
+                     v                          v
+             +---------------------------------------+
+             |                                       |
+             |             Main memory               |
+             |                                       |
+             +---------------------------------------+
+```
+
+Failure to query the physical address from page table is called page fault, this is because the page is invalid or the translation is not in main memory.
+
+#### Translation Lookaside Buffer (TLB)
+
+Searching the physical address through page table can be an expensive process, to minimize the long process, we use TLB.
+
+TLB is like a cache for Virtual Address to Physical Address.
+
+#### Huge Page
+
+Having huge page that means reducing the TLB pressure because less caching needed since we didn't fetch a lot of Virtual Memory, but having huge page means higher chance to have memory fragmentation.
+
+## Question and Exercises
+
+- Describe pipelining, out-of-order, and speculative execution
+
+Assume pipelining like a laundry system.
+
+There's washing state, rinse state, drying state, ironing state, folding state.
+
+When there's 4 person want to do laundry system, person 2 doesn't need to wait for person 1 to finish the folding state first in order to join the laundry system. Person 2 just need to wait until person 1 finished the washing state and go to rinse state.
+
+This method will make sure no one wasting their time.
+
+Out of Order execution means, instruction in pipeline can be executed not in order, as long the final result still the same like in order execution. This help to improve the performance of pipeline incase some instruction got stalled due to hazard.
+
+Speculative Execution is a way to prevent Control Hazard by guessing which branch will go into pipeline, instead of waiting the branch got resolved in execution phase.
+
+- How does register renaming help to speed up execution?
+
+Because of Data Hazard, especially in Write after Read (WAR) and Read after Read (RAR). Especially in OOO execution, there's a chance the output of the instruction can be wrong if we're not doing stalling in pipeline.
+
+But we don't want to do stall in pipeline because stalling means sacrificing the performance.
+
+- Describe spatial and temporal locality
+
+Spatial: If I access this, there's a chance I will access data around here in the future
+
+Temporal: If I access this, there's a chance I will access this data again in the future.
+
+- What is the size of the cache line in the majority of modern processors?
+
+64B
+
+- Name the components that constitute the CPU frontend and backend
+
+Idk, skipping this
+
+- What is the organization of the 4-level page table?
+
+Idk, skipping this
+
+- What is a page fault?
+
+When you can't access the translation of Virtual address to Physical Address, usually the translation is being put in the hard disk because of swapping happened.
+
+- What is the default page size in x86 and ARM architectures?
+
+4KB (?)
+
+- What role does the TLB (Translation Lookaside Buffer) play?
+
+To cache the Virtual Address to Physical address mapping, since querying the Physical address through the page table is more heavier computation.
